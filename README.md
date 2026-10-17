@@ -1,0 +1,2 @@
+# RaspoznanieTeksta
+Курсовая работа
