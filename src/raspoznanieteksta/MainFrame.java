@@ -2,6 +2,7 @@ package raspoznanieteksta;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
@@ -14,7 +15,11 @@ public class MainFrame extends JFrame {
     private final DrawPanel drawPanel = new DrawPanel();
     private final RecognitionEngine engine = new RecognitionEngine();
     private final JLabel statusLabel = new JLabel("Образцов в базе: 0");
+    private final JTextField resultField = new JTextField();
     private final File dataFile = new File("data/samples.dat");
+
+    // Кнопки инструментов — как в Paint
+    private JToggleButton penBtn, eraserBtn, selectBtn;
 
     public MainFrame() {
         super("RaspoznanieTeksta — Распознавание рукописных символов");
@@ -39,44 +44,161 @@ public class MainFrame extends JFrame {
 
         setLayout(new BorderLayout());
 
+        // === СВЕРХУ: тулбар инструментов (Paint-style) ===
+        add(createToolBar(), BorderLayout.NORTH);
+
+        // === СЛЕВА: вертикальная панель возможностей ===
+        add(createLeftPanel(), BorderLayout.WEST);
+
+        // === ЦЕНТР: холст ===
         add(drawPanel, BorderLayout.CENTER);
 
-        JPanel buttons = new JPanel(new FlowLayout());
-        JButton trainBtn = new JButton("Обучить");
-        JButton recognizeBtn = new JButton("Распознать");
-        JButton recognizeLineBtn = new JButton("Распознать строку");
-        JButton clearBtn = new JButton("Очистить");
-        JButton saveBtn = new JButton("Сохранить базу");
-        JButton loadBtn = new JButton("Загрузить базу");
-
-        buttons.add(trainBtn);
-        buttons.add(recognizeBtn);
-        buttons.add(recognizeLineBtn);
-        buttons.add(clearBtn);
-        buttons.add(saveBtn);
-        buttons.add(loadBtn);
-        add(buttons, BorderLayout.NORTH);
-
-        add(statusLabel, BorderLayout.SOUTH);
-
-        trainBtn.addActionListener(e -> onTrain());
-        recognizeBtn.addActionListener(e -> onRecognize());
-        recognizeLineBtn.addActionListener(e -> onRecognizeLine());
-        clearBtn.addActionListener(e -> drawPanel.clear());
-        saveBtn.addActionListener(e -> onSave());
-        loadBtn.addActionListener(e -> onLoad());
+        // === СНИЗУ: статус + строка результата ===
+        add(createBottomPanel(), BorderLayout.SOUTH);
 
         if (dataFile.exists()) onLoad();
 
-        // --- Открывать на весь экран, но не fullscreen-режим ---
         setResizable(true);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
-
-        // Запасной размер, если ОС не поддерживает maximize
         setSize(1024, 720);
         setLocationRelativeTo(null);
     }
 
+    // ---------- Верхний тулбар инструментов ----------
+    private JPanel createToolBar() {
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+        bar.setBackground(new Color(245, 245, 245));
+
+        penBtn    = new JToggleButton("✏ Карандаш");
+        eraserBtn = new JToggleButton("🧽 Ластик");
+        selectBtn = new JToggleButton("▭ Выделить");
+
+        ButtonGroup group = new ButtonGroup();
+        group.add(penBtn);
+        group.add(eraserBtn);
+        group.add(selectBtn);
+        penBtn.setSelected(true);
+
+        penBtn.addActionListener(e -> drawPanel.setTool(DrawPanel.Tool.PEN));
+        eraserBtn.addActionListener(e -> drawPanel.setTool(DrawPanel.Tool.ERASER));
+        selectBtn.addActionListener(e -> drawPanel.setTool(DrawPanel.Tool.SELECT));
+
+        JButton clearAllBtn = new JButton("🗑 Очистить всё");
+        clearAllBtn.addActionListener(e -> drawPanel.clear());
+
+        JButton deleteSelBtn = new JButton("✂ Удалить выделенное");
+        deleteSelBtn.addActionListener(e -> drawPanel.deleteSelection());
+
+        JSeparator sep = new JSeparator(SwingConstants.VERTICAL);
+        sep.setPreferredSize(new Dimension(1, 24));
+
+        bar.add(penBtn);
+        bar.add(eraserBtn);
+        bar.add(selectBtn);
+        bar.add(sep);
+        bar.add(clearAllBtn);
+        bar.add(deleteSelBtn);
+
+        return bar;
+    }
+
+    // ---------- Левая вертикальная панель возможностей ----------
+    private JPanel createLeftPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        panel.setPreferredSize(new Dimension(170, 0));
+        panel.setBackground(new Color(250, 250, 250));
+
+        JLabel header = new JLabel("Возможности");
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 13f));
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(header);
+        panel.add(Box.createVerticalStrut(8));
+
+        panel.add(makeLeftButton("Обучить",           e -> onTrain()));
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(makeLeftButton("Распознать",        e -> onRecognize()));
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(makeLeftButton("Распознать строку", e -> onRecognizeLine()));
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(makeLeftButton("Очистить холст",    e -> drawPanel.clear()));
+
+        panel.add(Box.createVerticalStrut(16));
+        panel.add(makeSeparator());
+        panel.add(Box.createVerticalStrut(16));
+
+        panel.add(makeLeftButton("Сохранить базу", e -> onSave()));
+        panel.add(Box.createVerticalStrut(4));
+        panel.add(makeLeftButton("Загрузить базу", e -> onLoad()));
+
+        panel.add(Box.createVerticalGlue());
+        return panel;
+    }
+
+    private JButton makeLeftButton(String text, java.awt.event.ActionListener l) {
+        JButton b = new JButton(text);
+        b.setAlignmentX(Component.LEFT_ALIGNMENT);
+        b.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        b.setHorizontalAlignment(SwingConstants.LEFT);
+        b.addActionListener(l);
+        return b;
+    }
+
+    private JSeparator makeSeparator() {
+        JSeparator sep = new JSeparator();
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        sep.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return sep;
+    }
+
+    // ---------- Нижняя панель: статус + строка результата ----------
+    private JPanel createBottomPanel() {
+        JPanel panel = new JPanel(new BorderLayout(8, 4));
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 8, 6, 8));
+
+        // Строка статуса сверху
+        JPanel statusRow = new JPanel(new BorderLayout());
+        statusRow.add(statusLabel, BorderLayout.WEST);
+
+        // Строка результата снизу
+        JPanel resultRow = new JPanel(new BorderLayout(8, 0));
+        JLabel resultLabel = new JLabel("Результат:");
+        resultField.setEditable(false);
+        resultField.setFont(resultField.getFont().deriveFont(Font.BOLD, 16f));
+        resultField.setToolTipText("Здесь появится распознанный текст. Можно выделить и скопировать.");
+
+        JButton copyBtn = new JButton("Копировать");
+        copyBtn.addActionListener(e -> copyResultToClipboard());
+
+        resultRow.add(resultLabel, BorderLayout.WEST);
+        resultRow.add(resultField, BorderLayout.CENTER);
+        resultRow.add(copyBtn, BorderLayout.EAST);
+
+        panel.add(statusRow, BorderLayout.NORTH);
+        panel.add(resultRow, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void setResultText(String text) {
+        resultField.setText(text);
+        // ставим курсор в начало, чтобы видеть начало строки при длинном тексте
+        resultField.setCaretPosition(0);
+    }
+
+    private void copyResultToClipboard() {
+        String text = resultField.getText();
+        if (text == null || text.isEmpty()) {
+            showInfo("Сначала распознайте что-нибудь.");
+            return;
+        }
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new StringSelection(text), null);
+        showInfo("Скопировано в буфер обмена: «" + text + "»");
+    }
+
+    // ---------- Действия ----------
     private void onTrain() {
         BufferedImage img = drawPanel.getImage();
         if (img == null) { showInfo("Сначала нарисуйте символ."); return; }
@@ -109,6 +231,10 @@ public class MainFrame extends JFrame {
             sb.append(String.format("• %s  (расстояние %.2f)<br>", e.getKey(), e.getValue()));
         }
         sb.append("</html>");
+
+        String best = top.get(0).getKey();
+        setResultText(best);
+
         JOptionPane.showMessageDialog(this, sb.toString(),
                 "Результат распознавания", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -118,9 +244,7 @@ public class MainFrame extends JFrame {
         if (img == null) { showInfo("Сначала нарисуйте строку."); return; }
         if (engine.size() == 0) { showInfo("База пуста. Сначала обучите программу."); return; }
 
-        // gapPixels = 6: 6 пустых столбцов подряд = граница между символами
         List<BufferedImage> symbols = ImageProcessor.segmentSymbols(img, 6);
-
         if (symbols.isEmpty()) { showInfo("Не найдено ни одного символа."); return; }
 
         StringBuilder result = new StringBuilder();
@@ -140,6 +264,8 @@ public class MainFrame extends JFrame {
                     i + 1, label, dist));
         }
         details.append("</html>");
+
+        setResultText(result.toString());
 
         JOptionPane.showMessageDialog(this,
                 "<html><b>Распознанная строка:</b><br><font size='5'>"
