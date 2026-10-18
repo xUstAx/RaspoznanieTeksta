@@ -4,6 +4,8 @@ import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ImageProcessor {
 
@@ -65,5 +67,68 @@ public class ImageProcessor {
             }
         }
         return features;
+    }
+
+    /**
+     * Разбивает изображение на отдельные символы по вертикальным "пустым" столбцам.
+     *
+     * @param src       изображение холста
+     * @param gapPixels сколько пустых столбцов подряд считать границей между символами
+     * @return список вырезанных символов слева направо
+     */
+    public static List<BufferedImage> segmentSymbols(BufferedImage src, int gapPixels) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+
+        int[] columnFill = new int[w];
+        for (int x = 0; x < w; x++) {
+            int count = 0;
+            for (int y = 0; y < h; y++) {
+                int alpha = (src.getRGB(x, y) >>> 24) & 0xff;
+                if (alpha > 10) count++;
+            }
+            columnFill[x] = count;
+        }
+
+        List<int[]> ranges = new ArrayList<>();
+        int start = -1;
+        int emptyRun = 0;
+
+        for (int x = 0; x < w; x++) {
+            boolean isEmpty = columnFill[x] == 0;
+
+            if (!isEmpty) {
+                if (start == -1) start = x;
+                emptyRun = 0;
+            } else {
+                if (start != -1) {
+                    emptyRun++;
+                    if (emptyRun >= gapPixels) {
+                        ranges.add(new int[]{start, x - emptyRun});
+                        start = -1;
+                        emptyRun = 0;
+                    }
+                }
+            }
+        }
+        if (start != -1) {
+            int end = w - 1;
+            while (end > start && columnFill[end] == 0) end--;
+            ranges.add(new int[]{start, end});
+        }
+
+        List<BufferedImage> result = new ArrayList<>();
+        for (int[] r : ranges) {
+            int x1 = r[0], x2 = r[1];
+            int width = x2 - x1 + 1;
+            if (width < 2) continue;
+
+            BufferedImage frag = src.getSubimage(x1, 0, width, h);
+            BufferedImage cropped = cropToContent(frag);
+            if (cropped != null) {
+                result.add(cropped);
+            }
+        }
+        return result;
     }
 }
