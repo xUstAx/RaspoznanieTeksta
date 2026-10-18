@@ -2,6 +2,7 @@ package raspoznanieteksta;
 
 import java.io.*;
 import java.util.*;
+import java.util.function.Predicate;
 
 public class RecognitionEngine {
 
@@ -14,9 +15,18 @@ public class RecognitionEngine {
     public int size() { return samples.size(); }
 
     public List<Map.Entry<String, Double>> recognize(double[] features, int topN) {
+        return recognize(features, topN, label -> true);
+    }
+
+    /**
+     * Распознавание с фильтром по метке (например, только цифры или только буквы).
+     */
+    public List<Map.Entry<String, Double>> recognize(double[] features, int topN,
+                                                     Predicate<String> labelFilter) {
         Map<String, Double> bestByLabel = new HashMap<>();
 
         for (Sample s : samples) {
+            if (!labelFilter.test(s.getLabel())) continue;
             double dist = euclideanDistance(features, s.getFeatures());
             bestByLabel.merge(s.getLabel(), dist, Math::min);
         }

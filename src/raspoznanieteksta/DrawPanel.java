@@ -2,6 +2,8 @@ package raspoznanieteksta;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -24,10 +26,12 @@ public class DrawPanel extends JPanel {
     public DrawPanel() {
         setBackground(Color.WHITE);
         setPreferredSize(new Dimension(400, 400));
+        setFocusable(true);
 
         MouseAdapter handler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                requestFocusInWindow();
                 ensureCanvas();
                 if (currentTool == Tool.SELECT) {
                     selecting = true;
@@ -78,7 +82,6 @@ public class DrawPanel extends JPanel {
                 drawing = false;
                 if (currentTool == Tool.SELECT && selecting) {
                     selecting = false;
-                    // нормализуем координаты
                     int x1 = Math.min(selStartX, selEndX);
                     int y1 = Math.min(selStartY, selEndY);
                     int x2 = Math.max(selStartX, selEndX);
@@ -92,6 +95,20 @@ public class DrawPanel extends JPanel {
 
         addMouseListener(handler);
         addMouseMotionListener(handler);
+
+        // --- Горячая клавиша Delete / Backspace для удаления выделения ---
+        InputMap im = getInputMap(WHEN_FOCUSED);
+        ActionMap am = getActionMap();
+
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "deleteSelection");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "deleteSelection");
+
+        am.put("deleteSelection", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                deleteSelection();
+            }
+        });
     }
 
     public void setTool(Tool tool) {
@@ -101,6 +118,7 @@ public class DrawPanel extends JPanel {
         }
         setCursor(Cursor.getPredefinedCursor(
                 tool == Tool.SELECT ? Cursor.CROSSHAIR_CURSOR : Cursor.DEFAULT_CURSOR));
+        requestFocusInWindow();
     }
 
     private void ensureCanvas() {
@@ -125,7 +143,6 @@ public class DrawPanel extends JPanel {
             g.drawString("Нарисуйте символ мышкой...", 20, 25);
         }
 
-        // Рамка выделения — поверх рисунка
         if (selStartX >= 0 && selEndX > selStartX && selEndY > selStartY) {
             Graphics2D g2 = (Graphics2D) g;
             g2.setColor(new Color(0, 120, 215));
@@ -146,10 +163,13 @@ public class DrawPanel extends JPanel {
         return copy;
     }
 
-    /** Удаляет область внутри выделения (заливает белым). */
+    public boolean hasSelection() {
+        return selStartX >= 0 && selEndX > selStartX && selEndY > selStartY;
+    }
+
     public void deleteSelection() {
         if (canvas == null) return;
-        if (selStartX < 0 || selEndX <= selStartX || selEndY <= selStartY) return;
+        if (!hasSelection()) return;
 
         Graphics2D g = canvas.createGraphics();
         g.setColor(Color.WHITE);
