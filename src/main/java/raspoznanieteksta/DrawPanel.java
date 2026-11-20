@@ -23,6 +23,18 @@ public class DrawPanel extends JPanel {
     private int selEndX = -1, selEndY = -1;
     private boolean selecting = false;
 
+    /** Вызывается после завершения штриха (для динамического распознавания). */
+    private Runnable strokeListener;
+
+    public void setStrokeListener(Runnable r) {
+        this.strokeListener = r;
+    }
+
+    /** Идёт ли рисование прямо сейчас. */
+    public boolean isDrawing() {
+        return drawing;
+    }
+
     public DrawPanel() {
         setBackground(Color.WHITE);
         setPreferredSize(new Dimension(400, 400));
@@ -89,6 +101,8 @@ public class DrawPanel extends JPanel {
                     selStartX = x1; selStartY = y1;
                     selEndX = x2;   selEndY = y2;
                     repaint();
+                } else if (strokeListener != null) {
+                    strokeListener.run(); // штрих закончен — сигнал для динамического распознавания
                 }
             }
         };
