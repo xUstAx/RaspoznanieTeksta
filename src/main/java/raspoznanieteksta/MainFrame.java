@@ -687,21 +687,24 @@ public class MainFrame extends JFrame {
 
         if (ImageProcessor.cropToContent(img) == null) { showInfo("Холст пуст."); return; }
 
-        // 2D-разбор: дроби, степени, индексы (как в редакторе формул Word)
-        FormulaLayout.ParseResult p = FormulaLayout.parse(img, this::recognizeFragment);
+        // 2D-разбор по ШТРИХАМ (касания не мешают): дроби, степени, индексы,
+        // радикалы — как в редакторе формул Word
+        List<ImageProcessor.Box> boxes =
+                ImageProcessor.segmentStrokeInk(drawPanel.getStrokePolylines(),
+                        Math.max(drawPanel.getWidth(), 1), Math.max(drawPanel.getHeight(), 1));
+        FormulaLayout.ParseResult p = FormulaLayout.parseBoxes(boxes, this::recognizeFragment);
         if (p.structured) {
             setResultText(p.linear, p.nnLine, null, p.knnLine, null);
             return;
         }
 
         // линейная строка — окно кандидатов для исправления
-        List<BufferedImage> symbols = ImageProcessor.segmentSymbols(img, 3);
-        if (symbols.isEmpty()) { showInfo("Символы не найдены."); return; }
+        if (boxes.isEmpty()) { showInfo("Символы не найдены."); return; }
 
         List<List<Map.Entry<String, Double>>> perFragment = new ArrayList<>();
         StringBuilder nnLine = new StringBuilder(), knnLine = new StringBuilder();
-        for (BufferedImage sym : symbols) {
-            double[] features = ImageProcessor.extractFeatures(sym);
+        for (ImageProcessor.Box box : boxes) {
+            double[] features = ImageProcessor.extractFeatures(box.image);
             List<Map.Entry<String, Double>> top = null;
             if (features != null) {
                 top = ensemble.recognize(features, 5, modeFilter());
@@ -749,7 +752,11 @@ public class MainFrame extends JFrame {
         if (ensemble.readyReason() != null) return;
         if (ImageProcessor.cropToContent(img) == null) return;
 
-        FormulaLayout.ParseResult p = FormulaLayout.parse(img, this::recognizeFragment);
+        List<ImageProcessor.Box> boxes =
+                ImageProcessor.segmentStrokeInk(drawPanel.getStrokePolylines(),
+                        Math.max(drawPanel.getWidth(), 1), Math.max(drawPanel.getHeight(), 1));
+        if (boxes.isEmpty()) return;
+        FormulaLayout.ParseResult p = FormulaLayout.parseBoxes(boxes, this::recognizeFragment);
         setResultText(p.linear, p.nnLine, null, p.knnLine, null);
     }
 

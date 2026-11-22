@@ -270,6 +270,15 @@ public class DrawPanel extends JPanel {
         return img;
     }
 
+    /** Штрихи как полилинии (для 2D-разбора формул по штрихам). */
+    public List<ImageProcessor.Polyline> getStrokePolylines() {
+        List<ImageProcessor.Polyline> out = new ArrayList<>();
+        for (InkStroke s : strokes) {
+            out.add(new ImageProcessor.Polyline(new ArrayList<>(s.points), s.width));
+        }
+        return out;
+    }
+
     public boolean hasSelection() {
         return selStartX >= 0 && selEndX > selStartX && selEndY > selStartY;
     }

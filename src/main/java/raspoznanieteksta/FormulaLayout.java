@@ -47,12 +47,20 @@ public final class FormulaLayout {
 
     /** Порог «дробной черты»: отношение ширины к высоте. */
     private static final double BAR_ASPECT = 2.2;
+    /** Временный отладочный вывод дерева разбора (stderr). */
+    public static boolean DEBUG = false;
     /** Порог «маленького» бокса (степень/индекс) относительно базы. */
     private static final double SMALL_RATIO = 0.7;
 
     public static ParseResult parse(BufferedImage canvas,
                                     Function<BufferedImage, FragmentResult> rec) {
         List<ImageProcessor.Box> boxes = ImageProcessor.segmentComponents(canvas);
+        return parseBoxes(boxes, rec);
+    }
+
+    /** Разбор готовых боксов (например, сегментация по ШТРИХАМ холста). */
+    public static ParseResult parseBoxes(List<ImageProcessor.Box> boxes,
+                                         Function<BufferedImage, FragmentResult> rec) {
         boxes.sort(Comparator.comparingInt(b -> b.x1));
         Map<ImageProcessor.Box, FragmentResult> cache = new HashMap<>();
         Region r = parseRegion(boxes, cache, rec);
@@ -114,6 +122,26 @@ public final class FormulaLayout {
         List<Item> items = new ArrayList<>();
         for (ImageProcessor.Box bar : bars) {
             if (bar.used) continue;
+
+            // Черта бывает двух видов:
+            // 1) ТОНКАЯ (высота ≤ 14) — отдельная черта дроби/радикала,
+            //    её y-диапазон — вся высота бокса;
+            // 2) «ПРИКЛЕЕННАЯ К ВЕРХУ» высокого бокса — соединённый радикал:
+            //    галочка+черта нарисованы одним штрихом, черта — в верхних
+            //    строках бокса. Метка бокса не важна (√ и «5» совпадают по форме).
+            boolean thin = bar.height() <= 14;
+            int barTop, barBottom;
+            if (thin) {
+                barTop = bar.y1;
+                barBottom = bar.y2;
+            } else {
+                // признак верхней черты: в верхних 25% строк бокса широкая
+                // горизонтальная полоса чернил
+                if (!hasTopBarRun(bar.image, 0.55)) continue;
+                barTop = bar.y1;
+                barBottom = bar.y1 + (int) (0.25 * bar.height());
+            }
+
             List<ImageProcessor.Box> num = new ArrayList<>();
             List<ImageProcessor.Box> den = new ArrayList<>();
             // в клетки попадают и вложенные дробные черты — рекурсивный разбор
@@ -122,34 +150,50 @@ public final class FormulaLayout {
                 if (b == bar || b.used) continue;
                 int ov = bar.overlapX(b);
                 if (ov < 0.3 * b.width()) continue;
-                if (b.y2 <= bar.y1 + 0.2 * bar.height()) num.add(b);
-                else if (b.y1 >= bar.y2 - 0.2 * bar.height()) den.add(b);
+                if (b.y2 <= barTop + 0.1 * (barBottom - barTop + 1)) num.add(b);
+                else if (b.y1 >= barBottom - 0.1 * (barBottom - barTop + 1)) den.add(b);
             }
 
             if (!num.isEmpty() && !den.isEmpty()) {
-                // дробь
+                // дробь (черта посередине между содержимым)
+                if (DEBUG) System.err.println("FRACTION bar=" + bar.x1 + ".." + bar.x2
+                        + " num=" + num.size() + " den=" + den.size());
                 Region n = parseRegion(num, cache, rec);
                 Region d = parseRegion(den, cache, rec);
+                if (DEBUG) System.err.println("  frac -> (" + n.linear + ")/(" + d.linear + ")");
                 bar.used = true;
                 for (ImageProcessor.Box b : num) b.used = true;
                 for (ImageProcessor.Box b : den) b.used = true;
                 items.add(new Item(bar.x1, "(" + n.linear + ")/(" + d.linear + ")",
                         n.nn + d.nn, n.knn + d.knn, null, true));
             } else if (num.isEmpty() && !den.isEmpty()) {
-                // только содержимое снизу — возможно, это верхняя черта радикала:
-                // слева вплотную должна быть высокая «галочка» корня (метка не
-                // важна — √ и v по форме совпадают, решает структура)
-                ImageProcessor.Box rootBox = nearestLeft(
-                        b -> b.height() >= 2.0 * bar.height(), bar, boxes);
-                if (rootBox != null) {
+                // только содержимое снизу — радикал:
+                // а) тонкая черта: слева вплотную высокая «галочка» (метка не важна);
+                // б) приклеенная к верху высокого бокса — сам бокс и есть радикал
+                if (thin) {
+                    ImageProcessor.Box rootBox = nearestLeft(
+                            b -> b.height() >= 2.0 * bar.height(), bar, boxes);
+                    if (rootBox != null) {
+                        Region d = parseRegion(den, cache, rec);
+                        bar.used = true;
+                        rootBox.used = true;
+                        for (ImageProcessor.Box b : den) b.used = true;
+                        items.add(new Item(rootBox.x1, "√(" + d.linear + ")",
+                                d.nn, d.knn, null, true));
+                    }
+                    // иначе это просто минус — останется линейным символом
+                } else {
+                    // соединённый радикал: сам бокс — «галочка + черта»,
+                    // содержимое под чертой — подкоренное выражение
+                    if (DEBUG) System.err.println("CONNECTED-RADICAL tall bar=" + bar.x1 + ".." + bar.x2
+                            + " den=" + den.size());
                     Region d = parseRegion(den, cache, rec);
+                    if (DEBUG) System.err.println("  conn-rad -> √(" + d.linear + ")");
                     bar.used = true;
-                    rootBox.used = true;
                     for (ImageProcessor.Box b : den) b.used = true;
-                    items.add(new Item(rootBox.x1, "√(" + d.linear + ")",
+                    items.add(new Item(bar.x1, "√(" + d.linear + ")",
                             d.nn, d.knn, null, true));
                 }
-                // иначе это просто минус — останется линейным символом
             }
         }
 
@@ -237,6 +281,29 @@ public final class FormulaLayout {
         }
 
         return out;
+    }
+
+    /** В верхних 25% строк картинки есть горизонтальная полоса чернил шириной ≥ ratio. */
+    public static boolean debugHasTopBarRun(BufferedImage img) {
+        return hasTopBarRun(img, 0.55);
+    }
+
+    private static boolean hasTopBarRun(BufferedImage img, double ratio) {
+        int w = img.getWidth(), h = img.getHeight();
+        int rows = Math.max(1, h / 4);
+        for (int y = 0; y < rows; y++) {
+            int run = 0, best = 0;
+            for (int x = 0; x < w; x++) {
+                if (((img.getRGB(x, y) >>> 24) & 0xff) > 10) {
+                    run++;
+                    if (run > best) best = run;
+                } else {
+                    run = 0;
+                }
+            }
+            if (best >= ratio * w) return true;
+        }
+        return false;
     }
 
     /** Степень/индекс должен быть буквой или цифрой (возможно, в скобках). */

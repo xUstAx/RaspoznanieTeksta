@@ -1,7 +1,10 @@
 package raspoznanieteksta;
 
+import java.awt.BasicStroke;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -9,6 +12,87 @@ import java.util.Comparator;
 import java.util.List;
 
 public class ImageProcessor {
+
+    /** Полилиния штриха для штриховой сегментации. */
+    public static final class Polyline {
+        public final List<Point> points;
+        public final float width;
+
+        public Polyline(List<Point> points, float width) {
+            this.points = points;
+            this.width = width;
+        }
+    }
+
+    /**
+     * Сегментация по ШТРИХАМ (как в Word Ink to Math): каждый штрих —
+     * отдельный объект, даже если штрихи соприкасаются на растре.
+     * Это решает главную проблему касаний: «1», черта дроби и «x»,
+     * нарисованные вплотную, остаются раздельными боксами.
+     * Склейка многоштриховых «=»/«+» и диакритика применяются на штрихах.
+     */
+    public static List<Box> segmentStrokeInk(List<Polyline> strokes, int w, int h) {
+        List<int[]> boxes = new ArrayList<>();
+        for (Polyline pl : strokes) {
+            int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+            for (Point p : pl.points) {
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.y > maxY) maxY = p.y;
+            }
+            boxes.add(new int[]{minX, maxX, minY, maxY, 0});
+        }
+        boxes.removeIf(b -> b[1] - b[0] + 1 < 2 && b[3] - b[2] + 1 < 2);
+        boxes.sort(Comparator.comparingInt(b -> b[0]));
+        mergeMultiStroke(boxes);
+        mergeDiacritics(boxes);
+
+        List<Box> result = new ArrayList<>();
+        for (int[] b : boxes) {
+            int px = Math.max(0, b[0] - 2), py = Math.max(0, b[2] - 2);
+            int qx = Math.min(w - 1, b[1] + 2), qy = Math.min(h - 1, b[3] + 2);
+            // рендерим штрихи этого бокса в отдельный прозрачный растр;
+            // штрих принадлежит НАИМЕНЬШЕМУ боксу, содержащему его центр
+            // (иначе вложенные боксы дублируют чернила друг друга)
+            BufferedImage crop = new BufferedImage(qx - px + 1, qy - py + 1,
+                    BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = crop.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setColor(Color.BLACK);
+            for (Polyline pl : strokes) {
+                Point c = pl.points.get(pl.points.size() / 2);
+                if (c.x < b[0] || c.x > b[1] || c.y < b[2] || c.y > b[3]) continue;
+                // есть ли меньший бокс, тоже содержащий центр? тогда пропускаем
+                boolean smaller = false;
+                for (int[] o : boxes) {
+                    if (o == b) continue;
+                    if (c.x >= o[0] && c.x <= o[1] && c.y >= o[2] && c.y <= o[3]) {
+                        int oa = (o[1] - o[0]) * (o[3] - o[2]);
+                        int ba = (b[1] - b[0]) * (b[3] - b[2]);
+                        if (oa < ba) { smaller = true; break; }
+                    }
+                }
+                if (smaller) continue;
+                g.setStroke(new BasicStroke(pl.width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                List<Point> pts = pl.points;
+                if (pts.size() == 1) {
+                    g.fillOval(pts.get(0).x - px - (int) pl.width / 2,
+                            pts.get(0).y - py - (int) pl.width / 2,
+                            (int) pl.width, (int) pl.width);
+                    continue;
+                }
+                for (int k = 1; k < pts.size(); k++) {
+                    Point a = pts.get(k - 1), d = pts.get(k);
+                    g.drawLine(a.x - px, a.y - py, d.x - px, d.y - py);
+                }
+            }
+            g.dispose();
+            result.add(new Box(b[0], b[2], b[1], b[3], crop));
+        }
+        return result;
+    }
 
     public static final int FEATURE_SIZE = 20;
 
@@ -296,7 +380,9 @@ public class ImageProcessor {
                     int vGap = Math.max(a[2], b[2]) - Math.min(a[3], b[3]);
                     int nw = Math.max(a[1], b[1]) - Math.min(a[0], b[0]) + 1;
                     int nh = Math.max(a[3], b[3]) - Math.min(a[2], b[2]) + 1;
-                    if (vGap <= 2.5 * Math.max(ha, hb) && (double) nw / nh <= 3.0) {
+                    // зазор считаем от МЕНЬШЕЙ полосы: иначе высокое «нечто»
+                    // (радикал) склеивается с дробной чертой под ним
+                    if (vGap <= 2.5 * Math.min(ha, hb) && (double) nw / nh <= 3.0) {
                         mergeAt(boxes, i);
                         changed = true;
                         break;
@@ -304,10 +390,11 @@ public class ImageProcessor {
                 }
 
                 // 2) «+»: плоская полоса + узкий вертикальный штрих сквозь неё.
-                // Примыкание допускается только вплотную (0.6 толщины полосы),
-                // чтобы не склеить числитель дроби с чертой.
-                boolean aFlat = (double) wa / ha >= 1.8;
-                boolean bFlat = (double) wb / hb >= 1.8;
+                // Только для ТОНКИХ полос: высокая компонента с широкой чертой
+                // в верхних строках — это соединённый радикал, и его числитель
+                // склеивать нельзя.
+                boolean aFlat = (double) wa / ha >= 1.8 && ha <= 14;
+                boolean bFlat = (double) wb / hb >= 1.8 && hb <= 14;
                 boolean aVert = (double) wa / ha <= 0.8;
                 boolean bVert = (double) wb / hb <= 0.8;
                 if ((aFlat && bVert) || (bFlat && aVert)) {
@@ -318,14 +405,28 @@ public class ImageProcessor {
                     int wv = vert[1] - vert[0] + 1;
                     boolean aligned = ovX >= 0.6 * Math.min(wa, wb);
                     boolean narrow = wv <= 0.3 * (flat[1] - flat[0] + 1);
-                    boolean crossing = ovY > 0 && hv >= 1.2 * hf;
-                    boolean abutTop = ovY <= 0 && (flat[2] - vert[3]) <= 0.6 * hf;
-                    boolean abutBottom = ovY <= 0 && (vert[2] - flat[3]) <= 0.6 * hf;
-                    if (aligned && narrow && (crossing || abutTop || abutBottom)) {
+                    // сквозное пересечение: вертикальный штрих торчит С ОБЕИХ
+                    // сторон полосы (иначе это числитель, стоящий на черте)
+                    boolean crossing = ovY > 0 && hv >= 1.2 * hf
+                            && vert[2] < flat[2] && vert[3] > flat[3];
+                    if (aligned && narrow && crossing) {
                         mergeAt(boxes, i);
                         changed = true;
                         break;
                     }
+                }
+
+                // 3) «x»/«*»: два диагональных штриха, сильно пересекающиеся
+                // по обеим осям (X-крест) — один символ. Плоские и вертикальные
+                // боксы исключены (это «+» и «=», правила 1-2).
+                boolean aDiag = (double) wa / ha >= 0.4 && (double) wa / ha <= 2.5;
+                boolean bDiag = (double) wb / hb >= 0.4 && (double) wb / hb <= 2.5;
+                if (aDiag && bDiag
+                        && ovX >= 0.4 * Math.min(wa, wb)
+                        && ovY >= 0.4 * Math.min(ha, hb)) {
+                    mergeAt(boxes, i);
+                    changed = true;
+                    break;
                 }
             }
         }
