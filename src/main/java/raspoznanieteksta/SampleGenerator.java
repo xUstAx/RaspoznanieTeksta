@@ -136,12 +136,13 @@ public class SampleGenerator {
         int gx = cx - gw / 2;
         g.setFont(font);
         g.drawString(ch, gx, gy);
-        // черта от вершины длинного штриха вправо
+        // черта от вершины длинного штриха вправо — длиной до половины-всего
+        // размера символа (корень может покрывать дробь целиком)
         float stroke = 4f + rnd.nextInt(4);
         g.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         int barY = gy - (int) (0.62 * size);
         int barX1 = gx + gw / 2;
-        int barX2 = gx + gw / 2 + (int) (size * (0.4 + rnd.nextDouble() * 0.3));
+        int barX2 = gx + gw / 2 + (int) (size * (0.5 + rnd.nextDouble() * 0.5));
         g.drawLine(barX1, barY, barX2, barY);
     }
 

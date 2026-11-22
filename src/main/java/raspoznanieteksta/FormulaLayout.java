@@ -116,8 +116,10 @@ public final class FormulaLayout {
             if (bar.used) continue;
             List<ImageProcessor.Box> num = new ArrayList<>();
             List<ImageProcessor.Box> den = new ArrayList<>();
+            // в клетки попадают и вложенные дробные черты — рекурсивный разбор
+            // обработает их как дроби; исключена только сама черта
             for (ImageProcessor.Box b : boxes) {
-                if (b == bar || b.used || b.aspect() >= BAR_ASPECT) continue;
+                if (b == bar || b.used) continue;
                 int ov = bar.overlapX(b);
                 if (ov < 0.3 * b.width()) continue;
                 if (b.y2 <= bar.y1 + 0.2 * bar.height()) num.add(b);
@@ -198,6 +200,18 @@ public final class FormulaLayout {
             Region baseR = recognizeBox(it.box, cache, rec);
             out.append(baseR.linear, baseR.nn, baseR.knn);
             emitted[i] = true;
+
+            // радикал «√»: подкоренное выражение — СЛЕДУЮЩИЙ элемент
+            // (дробь, скобочная группа или символ)
+            if (baseR.linear.equals("√") && i + 1 < items.size() && !emitted[i + 1]) {
+                Item rad = items.get(i + 1);
+                emitted[i + 1] = true;
+                out.structured = true;
+                out.append("√(" + rad.linear + ")", rad.nn, rad.knn);
+                i += 2;
+                continue;
+            }
+
             if (!sup.isEmpty()) {
                 Region e = parseRegion(sup, cache, rec);
                 // степень/индекс — буквы или цифры; одиночный знак (точка,
