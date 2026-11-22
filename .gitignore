@@ -4,6 +4,12 @@
 # Log file
 *.log
 
+# Maven
+target/
+
+# IntelliJ IDEA (проект открывается через pom.xml, служебные файлы не публикуются)
+.idea/
+
 # BlueJ files
 *.ctxt
 
