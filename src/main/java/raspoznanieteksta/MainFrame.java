@@ -146,11 +146,11 @@ public class MainFrame extends JFrame {
         });
         row1.add(langBtn);
 
-        penBtn = new JToggleButton("✏");
+        penBtn = new JToggleButton("Карандаш");
         penBtn.setToolTipText("Карандаш");
-        eraserBtn = new JToggleButton("🧽");
+        eraserBtn = new JToggleButton("Ластик");
         eraserBtn.setToolTipText("Ластик");
-        selectBtn = new JToggleButton("▭");
+        selectBtn = new JToggleButton("Выделить");
         selectBtn.setToolTipText("Выделить (Delete — удалить выделенное)");
         ButtonGroup tools = new ButtonGroup();
         tools.add(penBtn);
@@ -164,12 +164,12 @@ public class MainFrame extends JFrame {
         row1.add(eraserBtn);
         row1.add(selectBtn);
 
-        JButton clearAllBtn = new JButton("🗑");
+        JButton clearAllBtn = new JButton("Очистить");
         clearAllBtn.setToolTipText("Очистить холст");
         clearAllBtn.addActionListener(e -> drawPanel.clear());
         row1.add(clearAllBtn);
 
-        JButton deleteSelBtn = new JButton("✂");
+        JButton deleteSelBtn = new JButton("Удалить выдел.");
         deleteSelBtn.setToolTipText("Удалить выделенное");
         deleteSelBtn.addActionListener(e -> drawPanel.deleteSelection());
         row1.add(deleteSelBtn);
@@ -201,7 +201,7 @@ public class MainFrame extends JFrame {
 
         row2.add(makeSeparator());
 
-        dynamicBtn = new JCheckBox("⚡ Динамически", true);
+        dynamicBtn = new JCheckBox("Динамически", true);
         dynamicBtn.setToolTipText("Распознавать автоматически после паузы в рисовании (700 мс)");
         row2.add(dynamicBtn);
 
@@ -215,12 +215,12 @@ public class MainFrame extends JFrame {
 
         row2.add(makeSeparator());
 
-        JButton saveBtn = new JButton("💾 Мои");
+        JButton saveBtn = new JButton("Мои образцы");
         saveBtn.setToolTipText("Сохранить мои образцы в data/samples_user.dat");
         saveBtn.addActionListener(e -> onSave());
         row2.add(saveBtn);
 
-        JButton loadBtn = new JButton("🔄 Базы");
+        JButton loadBtn = new JButton("Перечитать базы");
         loadBtn.setToolTipText("Перечитать синтетическую базу и мои образцы");
         loadBtn.addActionListener(e -> onLoad());
         row2.add(loadBtn);
@@ -240,17 +240,17 @@ public class MainFrame extends JFrame {
         panel.setPreferredSize(new Dimension(210, 0));
         panel.setBackground(new Color(240, 246, 255));
 
-        JButton trainBtn = makeSideButton("🎓 Обучить",
+        JButton trainBtn = makeSideButton("Обучить",
                 "Добавить нарисованный символ в «мои» образцы (сохраняется сразу)",
                 e -> onTrain());
-        JButton recognizeBtn = makeSideButton("🔍 Распознать",
+        JButton recognizeBtn = makeSideButton("Распознать символ",
                 "Распознать символ ансамблем (с окном кандидатов)",
                 e -> onRecognize());
-        JButton recognizeLineBtn = makeSideButton("≡ Распознать строку",
+        JButton recognizeLineBtn = makeSideButton("Распознать строку",
                 "Распознать строку ансамблем (с окном кандидатов)",
                 e -> onRecognizeLine());
 
-        dynamicBtn = new JCheckBox("⚡ Динамически", true);
+        dynamicBtn = new JCheckBox("Динамически", true);
         dynamicBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         dynamicBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
         dynamicBtn.setToolTipText("Распознавать автоматически после паузы в рисовании (700 мс)");
@@ -267,10 +267,10 @@ public class MainFrame extends JFrame {
         panel.add(makeHorizontalSeparator());
         panel.add(Box.createVerticalStrut(12));
 
-        JButton photoBtn = makeSideButton("📷 Фото",
+        JButton photoBtn = makeSideButton("Фото в буфер (Ctrl+V)",
                 "Скопировать формулу с холста картинкой — вставьте Ctrl+V в документ",
                 e -> onCopyPhoto());
-        JButton wordBtn = makeSideButton("∑ В Word",
+        JButton wordBtn = makeSideButton("В Word (MathML)",
                 "Скопировать распознанную формулу как MathML — Вставка → Уравнение в Word → Ctrl+V",
                 e -> onCopyWord());
 
@@ -400,12 +400,12 @@ public class MainFrame extends JFrame {
         if (lastNnRaw.isEmpty() && lastKnnRaw.isEmpty()) return " ";
         StringBuilder sb = new StringBuilder();
         if (!lastNnRaw.isEmpty()) {
-            sb.append("🧠 «").append(applyCase(lastNnRaw)).append("»");
+            sb.append("Нейросеть: «").append(applyCase(lastNnRaw)).append("»");
             if (lastNnConf > 0) sb.append(" ").append(String.format("%.0f%%", lastNnConf * 100));
         }
         if (!lastKnnRaw.isEmpty()) {
             if (sb.length() > 0) sb.append("  •  ");
-            sb.append("📊 «").append(applyCase(lastKnnRaw)).append("»");
+            sb.append("kNN: «").append(applyCase(lastKnnRaw)).append("»");
             if (lastKnnConf > 0) sb.append(" ").append(String.format("%.0f%%", lastKnnConf * 100));
         }
         if (!lastNnRaw.isEmpty() && !lastKnnRaw.isEmpty()) {

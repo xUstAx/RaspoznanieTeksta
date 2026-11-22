@@ -31,8 +31,8 @@ public class NeuralEngine {
 
     public static final int FEATURE_SIZE = ImageProcessor.FEATURE_SIZE;
     private static final int INPUT = FEATURE_SIZE * FEATURE_SIZE; // 400
-    private static final int HIDDEN1 = 128;
-    private static final int HIDDEN2 = 64;
+    private static final int HIDDEN1 = 256;
+    private static final int HIDDEN2 = 128;
     private static final int EPOCHS_MIN = 200;
     private static final int EPOCHS_MAX = 300;
     private static final long SEED = 123;
